@@ -1,0 +1,17 @@
+[project]
+name = "core"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.13.0",
+    "psycopg[binary]>=3.2.3",
+    "pgvector>=0.3.6",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

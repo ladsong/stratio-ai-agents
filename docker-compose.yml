@@ -30,8 +30,8 @@ services:
 
   gateway:
     build:
-      context: ./apps/gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./apps/gateway/Dockerfile
     container_name: nanobot-gateway
     environment:
       GATEWAY_HOST: 0.0.0.0
@@ -82,6 +82,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  migrate:
+    build:
+      context: ./packages/core
+      dockerfile: Dockerfile
+    container_name: nanobot-migrate
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nanobot}:${POSTGRES_PASSWORD:-nanobot}@postgres:5432/${POSTGRES_DB:-nanobot}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - tools
 
 volumes:
   postgres_data:
