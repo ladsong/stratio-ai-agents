@@ -40,13 +40,13 @@ class BackendBridge:
     
     async def _handle_message(self, msg: InboundMessage):
         """Handle an inbound message."""
-        session_id = msg.session_id
+        session_key = msg.session_key
         content = msg.content
         
-        logger.info(f"Message from {session_id}: {content[:50]}...")
+        logger.info(f"Message from {session_key}: {content[:50]}...")
         
         try:
-            thread_id = await self._get_or_create_thread(session_id, msg.metadata)
+            thread_id = await self._get_or_create_thread(session_key, msg.metadata)
             
             run_id = await self._create_run(thread_id, content)
             
@@ -68,21 +68,21 @@ class BackendBridge:
             logger.error(f"Error handling message: {e}", exc_info=True)
             await self._send_response(msg, f"Unexpected error: {str(e)}")
     
-    async def _get_or_create_thread(self, session_id: str, metadata: dict) -> str:
+    async def _get_or_create_thread(self, session_key: str, metadata: dict) -> str:
         """Get or create thread for session."""
-        if session_id in self.session_threads:
-            return self.session_threads[session_id]
+        if session_key in self.session_threads:
+            return self.session_threads[session_key]
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.api_base}/threads",
                 headers=self.headers,
-                json={"meta": {"session_id": session_id, **metadata}}
+                json={"meta": {"session_key": session_key, **metadata}}
             )
             response.raise_for_status()
             thread_id = response.json()["id"]
-            self.session_threads[session_id] = thread_id
-            logger.info(f"Created thread {thread_id} for session {session_id}")
+            self.session_threads[session_key] = thread_id
+            logger.info(f"Created thread {thread_id} for session {session_key}")
             return thread_id
     
     async def _create_run(self, thread_id: str, message: str) -> str:
@@ -134,9 +134,10 @@ class BackendBridge:
     async def _send_response(self, original_msg: InboundMessage, content: str):
         """Send response back through bus."""
         outbound = OutboundMessage(
-            session_id=original_msg.session_id,
+            channel=original_msg.channel,
+            chat_id=original_msg.chat_id,
             content=content,
             metadata=original_msg.metadata
         )
         await self.bus.publish_outbound(outbound)
-        logger.info(f"Sent response to session {original_msg.session_id}")
+        logger.info(f"Sent response to {original_msg.channel}:{original_msg.chat_id}")
