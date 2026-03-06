@@ -73,17 +73,21 @@ services:
 
   worker:
     build:
-      context: ./apps/worker
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./apps/worker/Dockerfile
     container_name: nanobot-worker
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nanobot}:${POSTGRES_PASSWORD:-nanobot}@postgres:5432/${POSTGRES_DB:-nanobot}
       REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nanobot}:${POSTGRES_PASSWORD:-nanobot}@postgres:5432/${POSTGRES_DB:-nanobot}
+      RUNTIME_URL: http://runtime:8010
+      RQ_QUEUE_NAME: nanobot-runs
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      runtime:
+        condition: service_started
 
   migrate:
     build:

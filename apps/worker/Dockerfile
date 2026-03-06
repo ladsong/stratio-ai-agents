@@ -3,11 +3,15 @@ FROM python:3.12-slim
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src
 
-COPY requirements.txt ./
+COPY packages/core/ /tmp/core/
+RUN pip install --no-cache-dir -e /tmp/core
+
+COPY apps/worker/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/ ./src/
+COPY apps/worker/src/ ./src/
 
-CMD ["python", "-m", "src.worker.main"]
+CMD ["python", "-m", "worker.main"]

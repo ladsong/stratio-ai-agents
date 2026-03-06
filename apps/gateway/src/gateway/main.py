@@ -19,6 +19,7 @@ from core.repositories.run_repo import RunRepository
 from core.repositories.thread_repo import ThreadRepository
 from gateway.dependencies import get_db, get_request_id, verify_auth
 from gateway.middleware import RequestLoggingMiddleware
+from gateway.queue import get_queue
 from gateway.schemas import (
     ApprovalRequest,
     ArtifactResponse,
@@ -38,6 +39,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     stream=sys.stdout
 )
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Nanobot Gateway API",
@@ -159,6 +162,26 @@ def create_run(
         graph_name=run_data.graph_name,
         meta=run_data.meta,
     )
+    
+    queue = get_queue()
+    initial_state = {
+        "thread_id": run_data.thread_id,
+        "run_id": run_id,
+        "messages": run_data.meta.get("messages", []) if run_data.meta else []
+    }
+    
+    queue.enqueue(
+        "core.jobs.run_executor.execute_run_job",
+        run_id=run_id,
+        thread_id=run_data.thread_id,
+        graph_name=run_data.graph_name,
+        initial_state=initial_state,
+        job_timeout=300,
+        result_ttl=3600,
+    )
+    
+    logger.info(f"Enqueued run {run_id} for execution")
+    
     return RunResponse.model_validate(run)
 
 
@@ -208,7 +231,24 @@ def approve_run(
         response=approval_data.response,
     )
     
-    repo.update_status(run_id, "running")
+    queue = get_queue()
+    approval_response = {
+        "status": "approved",
+        "approval_status": "approved",
+        **approval_data.response
+    }
+    
+    queue.enqueue(
+        "core.jobs.run_executor.resume_run_job",
+        run_id=run_id,
+        thread_id=run.thread_id,
+        graph_name=run.graph_name,
+        approval_response=approval_response,
+        job_timeout=300,
+        result_ttl=3600,
+    )
+    
+    logger.info(f"Enqueued resume job for run {run_id} (approved)")
     
     return {"status": "approved", "run_id": run_id}
 
@@ -234,6 +274,8 @@ def reject_run(
     )
     
     repo.update_status(run_id, "failed", error="Rejected by user")
+    
+    logger.info(f"Run {run_id} rejected by user")
     
     return {"status": "rejected", "run_id": run_id}
 
