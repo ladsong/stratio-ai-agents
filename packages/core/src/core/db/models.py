@@ -129,3 +129,24 @@ class ToolRegistry(Base, TimestampMixin):
     timeout_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     retries: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     permission_tag: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+
+class IntegrationCredential(Base, TimestampMixin):
+    __tablename__ = "integration_credentials"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    integration_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="valid")
+    meta: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+
+class ToolPolicy(Base, TimestampMixin):
+    __tablename__ = "tool_policies"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    scope_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    scope_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    mode: Mapped[str] = mapped_column(String(50), nullable=False, default="allowlist")
+    tools: Mapped[dict] = mapped_column(JSON, nullable=False)

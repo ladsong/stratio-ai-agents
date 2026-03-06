@@ -14,12 +14,14 @@ from sqlalchemy.orm import Session
 
 from core.repositories.artifact_repo import ArtifactRepository
 from core.repositories.event_repo import EventRepository
+from core.repositories.integration_credential_repo import IntegrationCredentialRepository
 from core.repositories.knowledge_chunk_repo import KnowledgeChunkRepository
 from core.repositories.knowledge_document_repo import KnowledgeDocumentRepository
 from core.repositories.registry_repo import RegistryRepository
 from core.repositories.run_repo import RunRepository
 from core.repositories.thread_repo import ThreadRepository
 from core.repositories.tool_call_repo import ToolCallRepository
+from core.repositories.tool_policy_repo import ToolPolicyRepository
 from gateway.dependencies import get_db, get_request_id, verify_auth
 from gateway.middleware import RequestLoggingMiddleware
 from gateway.queue import get_queue
@@ -32,12 +34,17 @@ from gateway.schemas import (
     EventCreate,
     EventResponse,
     GraphResponse,
+    IntegrationCreate,
+    IntegrationResponse,
+    IntegrationRotate,
     RunCreate,
     RunResponse,
     RunStateResponse,
     ThreadCreate,
     ThreadResponse,
     ToolCallResponse,
+    ToolPolicyCreate,
+    ToolPolicyResponse,
     ToolResponse,
 )
 
@@ -472,3 +479,163 @@ def get_document_chunks(
         created_at=chunk.created_at,
         updated_at=chunk.updated_at
     ) for chunk in chunks]
+
+
+# Integration Credentials Endpoints
+
+@app.get("/api/v1/config/integrations", response_model=list[IntegrationResponse])
+async def list_integrations(
+    integration_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> list[IntegrationResponse]:
+    repo = IntegrationCredentialRepository(db)
+    credentials = repo.list_by_type(integration_type)
+    
+    return [IntegrationResponse(
+        id=cred.id,
+        integration_type=cred.integration_type,
+        display_name=cred.display_name,
+        status=cred.status,
+        meta=cred.meta,
+        created_at=cred.created_at,
+        updated_at=cred.updated_at
+    ) for cred in credentials]
+
+
+@app.post("/api/v1/config/integrations/{integration_type}", response_model=IntegrationResponse)
+async def create_integration(
+    integration_type: str,
+    data: IntegrationCreate,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> IntegrationResponse:
+    import uuid
+    
+    repo = IntegrationCredentialRepository(db)
+    credential = repo.create(
+        credential_id=str(uuid.uuid4()),
+        integration_type=integration_type,
+        display_name=data.display_name,
+        token=data.token,
+        meta=data.meta
+    )
+    
+    return IntegrationResponse(
+        id=credential.id,
+        integration_type=credential.integration_type,
+        display_name=credential.display_name,
+        status=credential.status,
+        meta=credential.meta,
+        created_at=credential.created_at,
+        updated_at=credential.updated_at
+    )
+
+
+@app.post("/api/v1/config/integrations/{credential_id}/rotate", response_model=IntegrationResponse)
+async def rotate_integration(
+    credential_id: str,
+    data: IntegrationRotate,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> IntegrationResponse:
+    repo = IntegrationCredentialRepository(db)
+    credential = repo.update_token(credential_id, data.token)
+    
+    if not credential:
+        raise HTTPException(status_code=404, detail="Integration not found")
+    
+    return IntegrationResponse(
+        id=credential.id,
+        integration_type=credential.integration_type,
+        display_name=credential.display_name,
+        status=credential.status,
+        meta=credential.meta,
+        created_at=credential.created_at,
+        updated_at=credential.updated_at
+    )
+
+
+@app.delete("/api/v1/config/integrations/{credential_id}")
+async def delete_integration(
+    credential_id: str,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+):
+    repo = IntegrationCredentialRepository(db)
+    deleted = repo.delete(credential_id)
+    
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Integration not found")
+    
+    return {"status": "deleted", "id": credential_id}
+
+
+# Tool Policy Endpoints
+
+@app.get("/api/v1/config/tool-policy", response_model=ToolPolicyResponse)
+async def get_tool_policy(
+    scope_type: str,
+    scope_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> ToolPolicyResponse:
+    repo = ToolPolicyRepository(db)
+    policy = repo.get_policy(scope_type, scope_id)
+    
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    
+    return ToolPolicyResponse(
+        id=policy.id,
+        scope_type=policy.scope_type,
+        scope_id=policy.scope_id,
+        mode=policy.mode,
+        tools=policy.tools.get("tools", []),
+        created_at=policy.created_at,
+        updated_at=policy.updated_at
+    )
+
+
+@app.put("/api/v1/config/tool-policy", response_model=ToolPolicyResponse)
+async def update_tool_policy(
+    data: ToolPolicyCreate,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> ToolPolicyResponse:
+    import uuid
+    
+    repo = ToolPolicyRepository(db)
+    policy = repo.create_or_update(
+        policy_id=str(uuid.uuid4()),
+        scope_type=data.scope_type,
+        scope_id=data.scope_id,
+        mode=data.mode,
+        tools=data.tools
+    )
+    
+    return ToolPolicyResponse(
+        id=policy.id,
+        scope_type=policy.scope_type,
+        scope_id=policy.scope_id,
+        mode=policy.mode,
+        tools=policy.tools.get("tools", []),
+        created_at=policy.created_at,
+        updated_at=policy.updated_at
+    )
+
+
+@app.delete("/api/v1/config/tool-policy")
+async def delete_tool_policy(
+    scope_type: str,
+    scope_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+):
+    repo = ToolPolicyRepository(db)
+    deleted = repo.delete(scope_type, scope_id)
+    
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    
+    return {"status": "deleted", "scope_type": scope_type, "scope_id": scope_id}

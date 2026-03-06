@@ -155,3 +155,46 @@ class ChunkResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class IntegrationCreate(BaseModel):
+    display_name: str
+    token: str
+    meta: Optional[dict] = None
+
+
+class IntegrationResponse(BaseModel):
+    id: str
+    integration_type: str
+    display_name: str
+    status: str
+    meta: Optional[dict] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class IntegrationRotate(BaseModel):
+    token: str
+
+
+class ToolPolicyCreate(BaseModel):
+    scope_type: str
+    scope_id: Optional[str] = None
+    mode: str = "allowlist"
+    tools: list[str]
+
+
+class ToolPolicyResponse(BaseModel):
+    id: str
+    scope_type: str
+    scope_id: Optional[str] = None
+    mode: str
+    tools: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
