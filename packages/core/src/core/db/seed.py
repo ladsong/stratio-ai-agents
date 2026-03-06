@@ -44,18 +44,45 @@ def seed_database() -> None:
         tools = [
             ToolRegistry(
                 id=str(uuid.uuid4()),
-                name="echo",
-                description="Echo back the input",
-                schema={"type": "object", "properties": {"message": {"type": "string"}}},
+                name="postgres_query",
+                description="Execute read-only SQL queries to retrieve data from the database",
+                schema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+                timeout_ms=10000,
+                retries=1,
+                permission_tag="database"
+            ),
+            ToolRegistry(
+                id=str(uuid.uuid4()),
+                name="vector_search",
+                description="Search knowledge base using semantic similarity",
+                schema={"type": "object", "properties": {"query": {"type": "string"}, "top_k": {"type": "integer", "default": 5}}, "required": ["query"]},
                 timeout_ms=5000,
-                retries=3,
+                retries=1,
+                permission_tag="database"
+            ),
+            ToolRegistry(
+                id=str(uuid.uuid4()),
+                name="document_lookup",
+                description="Retrieve a specific document by its ID",
+                schema={"type": "object", "properties": {"document_id": {"type": "string"}}, "required": ["document_id"]},
+                timeout_ms=2000,
+                retries=1,
                 permission_tag="safe"
             ),
             ToolRegistry(
                 id=str(uuid.uuid4()),
-                name="web_search",
-                description="Search the web for information",
-                schema={"type": "object", "properties": {"query": {"type": "string"}}},
+                name="artifact_writer",
+                description="Create an artifact record linked to a run",
+                schema={"type": "object", "properties": {"run_id": {"type": "string"}, "artifact_type": {"type": "string"}, "content": {"type": "string"}, "meta": {"type": "object"}}, "required": ["run_id", "artifact_type", "content"]},
+                timeout_ms=5000,
+                retries=1,
+                permission_tag="safe"
+            ),
+            ToolRegistry(
+                id=str(uuid.uuid4()),
+                name="mock_browser_research",
+                description="Perform web research (mock implementation)",
+                schema={"type": "object", "properties": {"query": {"type": "string"}, "max_results": {"type": "integer", "default": 5}}, "required": ["query"]},
                 timeout_ms=30000,
                 retries=2,
                 permission_tag="network"

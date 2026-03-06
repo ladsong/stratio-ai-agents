@@ -108,3 +108,18 @@ class GraphResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ToolCallResponse(BaseModel):
+    id: str
+    run_id: str
+    tool_name: str
+    inputs: Optional[dict] = None
+    outputs: Optional[dict] = None
+    error: Optional[str] = None
+    duration_ms: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

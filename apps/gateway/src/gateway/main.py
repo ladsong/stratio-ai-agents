@@ -17,6 +17,7 @@ from core.repositories.event_repo import EventRepository
 from core.repositories.registry_repo import RegistryRepository
 from core.repositories.run_repo import RunRepository
 from core.repositories.thread_repo import ThreadRepository
+from core.repositories.tool_call_repo import ToolCallRepository
 from gateway.dependencies import get_db, get_request_id, verify_auth
 from gateway.middleware import RequestLoggingMiddleware
 from gateway.queue import get_queue
@@ -31,6 +32,7 @@ from gateway.schemas import (
     RunStateResponse,
     ThreadCreate,
     ThreadResponse,
+    ToolCallResponse,
     ToolResponse,
 )
 
@@ -328,3 +330,28 @@ def list_graphs(
     repo = RegistryRepository(db)
     graphs = repo.list_graphs()
     return [GraphResponse.model_validate(g) for g in graphs]
+
+
+@app.get("/api/v1/runs/{run_id}/tool-calls", response_model=list[ToolCallResponse], dependencies=[Depends(verify_auth)])
+def list_run_tool_calls(
+    run_id: str,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> list[ToolCallResponse]:
+    repo = ToolCallRepository(db)
+    tool_calls = repo.list_by_run(run_id, limit)
+    return [ToolCallResponse.model_validate(tc) for tc in tool_calls]
+
+
+@app.get("/api/v1/tool-calls/{tool_call_id}", response_model=ToolCallResponse, dependencies=[Depends(verify_auth)])
+def get_tool_call(
+    tool_call_id: str,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> ToolCallResponse:
+    repo = ToolCallRepository(db)
+    tool_call = repo.get_by_id(tool_call_id)
+    if not tool_call:
+        raise HTTPException(status_code=404, detail="Tool call not found")
+    return ToolCallResponse.model_validate(tool_call)
