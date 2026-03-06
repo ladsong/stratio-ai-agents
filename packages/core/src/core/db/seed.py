@@ -19,13 +19,27 @@ def seed_database() -> None:
         )
         db.add(thread)
 
-        graph = GraphRegistry(
-            id=str(uuid.uuid4()),
-            name="default",
-            description="Default graph for basic agent execution",
-            config={"max_iterations": 40, "timeout_ms": 300000}
-        )
-        db.add(graph)
+        graphs = [
+            GraphRegistry(
+                id=str(uuid.uuid4()),
+                name="default",
+                description="Default graph for basic agent execution",
+                config={"max_iterations": 40, "timeout_ms": 300000}
+            ),
+            GraphRegistry(
+                id=str(uuid.uuid4()),
+                name="conversation_router",
+                description="Routes conversations to appropriate strategy graphs",
+                config={"timeout_ms": 60000}
+            ),
+            GraphRegistry(
+                id=str(uuid.uuid4()),
+                name="strategy_synthesis",
+                description="Synthesizes strategic artifacts with approval flow",
+                config={"timeout_ms": 120000, "requires_approval": True}
+            ),
+        ]
+        db.add_all(graphs)
 
         tools = [
             ToolRegistry(

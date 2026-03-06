@@ -1,2 +1,7 @@
 fastapi==0.115.8
 uvicorn[standard]==0.30.6
+langgraph==0.2.45
+langchain-core==0.3.21
+psycopg[binary]==3.2.3
+sqlalchemy==2.0.36
+pydantic==2.10.6

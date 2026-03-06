@@ -55,14 +55,16 @@ services:
 
   runtime:
     build:
-      context: ./apps/runtime
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./apps/runtime/Dockerfile
     container_name: nanobot-runtime
     environment:
       RUNTIME_HOST: 0.0.0.0
-      RUNTIME_PORT: 8001
+      RUNTIME_PORT: 8010
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nanobot}:${POSTGRES_PASSWORD:-nanobot}@postgres:5432/${POSTGRES_DB:-nanobot}
       REDIS_URL: redis://redis:6379/0
+    ports:
+      - "${RUNTIME_PORT:-8010}:8010"
     depends_on:
       postgres:
         condition: service_healthy
