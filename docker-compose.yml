@@ -103,5 +103,29 @@ services:
     profiles:
       - tools
 
+  nanobot-gateway:
+    build:
+      context: .
+      dockerfile: ./apps/nanobot-gateway/Dockerfile
+    container_name: nanobot-channels
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nanobot}:${POSTGRES_PASSWORD:-nanobot}@postgres:5432/${POSTGRES_DB:-nanobot}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-N-u9ANiJIrNt3UgWWgu1kHNTKTPoXvK5xp4eS3GGby0=}
+      BACKEND_API_BASE: http://gateway:8000/api/v1
+      BACKEND_API_TOKEN: ${AUTH_BEARER_TOKEN:-}
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      DISCORD_ENABLED: ${DISCORD_ENABLED:-false}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      SLACK_ENABLED: ${SLACK_ENABLED:-false}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:

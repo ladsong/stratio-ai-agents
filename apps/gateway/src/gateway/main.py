@@ -512,6 +512,13 @@ async def create_integration(
 ) -> IntegrationResponse:
     import uuid
     
+    if data.meta and "allowFrom" in data.meta:
+        allow_from = data.meta["allowFrom"]
+        if not isinstance(allow_from, list):
+            raise HTTPException(status_code=400, detail="allowFrom must be a list")
+        if not all(isinstance(item, str) for item in allow_from):
+            raise HTTPException(status_code=400, detail="allowFrom items must be strings")
+    
     repo = IntegrationCredentialRepository(db)
     credential = repo.create(
         credential_id=str(uuid.uuid4()),
@@ -544,6 +551,41 @@ async def rotate_integration(
     
     if not credential:
         raise HTTPException(status_code=404, detail="Integration not found")
+    
+    return IntegrationResponse(
+        id=credential.id,
+        integration_type=credential.integration_type,
+        display_name=credential.display_name,
+        status=credential.status,
+        meta=credential.meta,
+        created_at=credential.created_at,
+        updated_at=credential.updated_at
+    )
+
+
+@app.patch("/api/v1/config/integrations/{credential_id}/allow-from", response_model=IntegrationResponse)
+async def update_allow_from(
+    credential_id: str,
+    allow_from: list[str],
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> IntegrationResponse:
+    if not isinstance(allow_from, list):
+        raise HTTPException(status_code=400, detail="allowFrom must be a list")
+    if not all(isinstance(item, str) for item in allow_from):
+        raise HTTPException(status_code=400, detail="allowFrom items must be strings")
+    
+    repo = IntegrationCredentialRepository(db)
+    credential = repo.get_by_id(credential_id)
+    
+    if not credential:
+        raise HTTPException(status_code=404, detail="Integration not found")
+    
+    meta = credential.meta or {}
+    meta["allowFrom"] = allow_from
+    credential.meta = meta
+    db.commit()
+    db.refresh(credential)
     
     return IntegrationResponse(
         id=credential.id,

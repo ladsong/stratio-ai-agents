@@ -8,6 +8,7 @@ dependencies = [
     "psycopg[binary]>=3.2.3",
     "pgvector>=0.3.6",
     "cryptography>=41.0.0",
+    "nanobot-ai>=0.1.4",
 ]
 
 [build-system]

@@ -1,0 +1,22 @@
+# Nanobot channels configuration
+
+telegram:
+  enabled: ${TELEGRAM_ENABLED:-false}
+  token: ${TELEGRAM_BOT_TOKEN}
+  allowFrom: ["*"]
+
+discord:
+  enabled: ${DISCORD_ENABLED:-false}
+  token: ${DISCORD_BOT_TOKEN}
+  allowFrom: ["*"]
+
+slack:
+  enabled: ${SLACK_ENABLED:-false}
+  token: ${SLACK_BOT_TOKEN}
+  appToken: ${SLACK_APP_TOKEN}
+  allowFrom: ["*"]
+
+# Agent configuration (required by nanobot but not used in bridge mode)
+agent:
+  provider: openai
+  model: gpt-4
