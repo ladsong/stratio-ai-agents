@@ -1,0 +1,16 @@
+[lint]
+select = [
+    "E",  # pycodestyle errors
+    "F",  # pyflakes
+    "I",  # isort
+    "N",  # pep8-naming
+    "W",  # pycodestyle warnings
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
