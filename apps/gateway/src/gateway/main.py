@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from core.repositories.artifact_repo import ArtifactRepository
 from core.repositories.event_repo import EventRepository
+from core.repositories.knowledge_chunk_repo import KnowledgeChunkRepository
+from core.repositories.knowledge_document_repo import KnowledgeDocumentRepository
 from core.repositories.registry_repo import RegistryRepository
 from core.repositories.run_repo import RunRepository
 from core.repositories.thread_repo import ThreadRepository
@@ -24,6 +26,9 @@ from gateway.queue import get_queue
 from gateway.schemas import (
     ApprovalRequest,
     ArtifactResponse,
+    ChunkResponse,
+    DocumentCreate,
+    DocumentResponse,
     EventCreate,
     EventResponse,
     GraphResponse,
@@ -355,3 +360,115 @@ def get_tool_call(
     if not tool_call:
         raise HTTPException(status_code=404, detail="Tool call not found")
     return ToolCallResponse.model_validate(tool_call)
+
+
+@app.post("/api/v1/knowledge/documents", response_model=DocumentResponse, dependencies=[Depends(verify_auth)])
+def create_document(
+    document_data: DocumentCreate,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> DocumentResponse:
+    document_id = str(uuid.uuid4())
+    repo = KnowledgeDocumentRepository(db)
+    
+    document = repo.create(
+        document_id=document_id,
+        title=document_data.title,
+        content=document_data.content,
+        meta=document_data.meta
+    )
+    
+    queue = get_queue()
+    queue.enqueue(
+        "core.jobs.chunk_document.chunk_document_job",
+        document_id=document_id,
+        generate_embeddings=True,
+        job_timeout=300,
+        result_ttl=3600,
+    )
+    
+    logger.info(f"Enqueued chunking job for document {document_id}")
+    
+    chunk_count = repo.count_chunks(document_id)
+    
+    return DocumentResponse(
+        id=document.id,
+        title=document.title,
+        content=document.content,
+        meta=document.meta,
+        chunk_count=chunk_count,
+        created_at=document.created_at,
+        updated_at=document.updated_at
+    )
+
+
+@app.get("/api/v1/knowledge/documents", response_model=list[DocumentResponse], dependencies=[Depends(verify_auth)])
+def list_documents(
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> list[DocumentResponse]:
+    repo = KnowledgeDocumentRepository(db)
+    documents = repo.list_documents(limit, offset)
+    
+    responses = []
+    for doc in documents:
+        chunk_count = repo.count_chunks(doc.id)
+        responses.append(DocumentResponse(
+            id=doc.id,
+            title=doc.title,
+            content=doc.content,
+            meta=doc.meta,
+            chunk_count=chunk_count,
+            created_at=doc.created_at,
+            updated_at=doc.updated_at
+        ))
+    
+    return responses
+
+
+@app.get("/api/v1/knowledge/documents/{document_id}", response_model=DocumentResponse, dependencies=[Depends(verify_auth)])
+def get_document(
+    document_id: str,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> DocumentResponse:
+    repo = KnowledgeDocumentRepository(db)
+    document = repo.get_by_id(document_id)
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    chunk_count = repo.count_chunks(document_id)
+    
+    return DocumentResponse(
+        id=document.id,
+        title=document.title,
+        content=document.content,
+        meta=document.meta,
+        chunk_count=chunk_count,
+        created_at=document.created_at,
+        updated_at=document.updated_at
+    )
+
+
+@app.get("/api/v1/knowledge/documents/{document_id}/chunks", response_model=list[ChunkResponse], dependencies=[Depends(verify_auth)])
+def get_document_chunks(
+    document_id: str,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> list[ChunkResponse]:
+    chunk_repo = KnowledgeChunkRepository(db)
+    chunks = chunk_repo.list_by_document(document_id, limit)
+    
+    return [ChunkResponse(
+        id=chunk.id,
+        document_id=chunk.document_id,
+        content=chunk.content,
+        has_embedding=chunk.has_embedding,
+        meta=chunk.meta,
+        created_at=chunk.created_at,
+        updated_at=chunk.updated_at
+    ) for chunk in chunks]

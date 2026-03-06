@@ -123,3 +123,35 @@ class ToolCallResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class DocumentCreate(BaseModel):
+    title: Optional[str] = None
+    content: str
+    meta: Optional[dict] = None
+
+
+class DocumentResponse(BaseModel):
+    id: str
+    title: Optional[str] = None
+    content: str
+    meta: Optional[dict] = None
+    chunk_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ChunkResponse(BaseModel):
+    id: str
+    document_id: str
+    content: str
+    has_embedding: bool = False
+    meta: Optional[dict] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
