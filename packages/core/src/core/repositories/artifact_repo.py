@@ -13,3 +13,13 @@ class ArtifactRepository:
 
     def get_by_id(self, artifact_id: str) -> Optional[Artifact]:
         return self.db.query(Artifact).filter(Artifact.id == artifact_id).first()
+    
+    def list_by_run(self, run_id: str, limit: int = 100) -> list[Artifact]:
+        """List artifacts for a run."""
+        return (
+            self.db.query(Artifact)
+            .filter(Artifact.run_id == run_id)
+            .order_by(Artifact.created_at.desc())
+            .limit(limit)
+            .all()
+        )

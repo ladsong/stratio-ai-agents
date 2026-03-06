@@ -44,3 +44,13 @@ class EventRepository:
             .limit(limit)
             .all()
         )
+
+    def list_recent_by_thread(self, thread_id: str, limit: int = 20) -> list[Event]:
+        """Get recent events in chronological order (oldest first) for conversation history."""
+        return (
+            self.db.query(Event)
+            .filter(Event.thread_id == thread_id)
+            .order_by(Event.created_at.asc())
+            .limit(limit)
+            .all()
+        )

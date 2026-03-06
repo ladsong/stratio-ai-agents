@@ -1,6 +1,8 @@
 """Bridge nanobot channels to backend API."""
 
+import ast
 import asyncio
+import uuid
 import httpx
 from loguru import logger
 from nanobot.bus.events import InboundMessage, OutboundMessage
@@ -46,9 +48,23 @@ class BackendBridge:
         logger.info(f"Message from {session_key}: {content[:50]}...")
         
         try:
-            thread_id = await self._get_or_create_thread(session_key, msg.metadata)
+            # Parse channel and contact_id from session_key (e.g., "telegram:12345")
+            channel, contact_id = self._parse_session_key(session_key)
             
-            run_id = await self._create_run(thread_id, content)
+            # Get or create user for this contact
+            user_id, user_role = await self._get_or_create_user(channel, contact_id, msg.metadata)
+            
+            # Get or create thread for this user
+            thread_id = await self._get_or_create_thread(user_id, channel, contact_id, msg.metadata)
+            
+            # Load conversation history across all user's threads
+            history = await self._get_conversation_history(thread_id, limit=20)
+            
+            # Add current user message
+            messages = history + [{"role": "user", "content": content}]
+            
+            # Create run with full context including user info
+            run_id = await self._create_run(thread_id, messages, user_id, user_role)
             
             state = await self._poll_run(run_id)
             
@@ -59,7 +75,18 @@ class BackendBridge:
             artifacts = await self._get_artifacts(run_id)
             
             if artifacts:
-                response = artifacts[0].get("content", "No response")
+                content_str = artifacts[0].get("content", "No response")
+                try:
+                    # Parse stringified dict to extract actual message
+                    content_dict = ast.literal_eval(content_str)
+                    response = content_dict.get("content", content_str)
+                except (ValueError, SyntaxError):
+                    # Fallback to raw content if parsing fails
+                    response = content_str
+                
+                # Store user message and assistant response as events
+                await self._store_message_events(thread_id, content, response)
+                
                 await self._send_response(msg, response)
             else:
                 await self._send_response(msg, "Processed but no response generated.")
@@ -68,25 +95,84 @@ class BackendBridge:
             logger.error(f"Error handling message: {e}", exc_info=True)
             await self._send_response(msg, f"Unexpected error: {str(e)}")
     
-    async def _get_or_create_thread(self, session_key: str, metadata: dict) -> str:
-        """Get or create thread for session."""
-        if session_key in self.session_threads:
-            return self.session_threads[session_key]
+    def _parse_session_key(self, session_key: str) -> tuple[str, str]:
+        """Parse session_key into channel and contact_id."""
+        parts = session_key.split(":", 1)
+        if len(parts) == 2:
+            return parts[0], parts[1]
+        return "unknown", session_key
+    
+    async def _get_or_create_user(self, channel: str, contact_id: str, metadata: dict) -> tuple[str, str]:
+        """Get or create user for this contact."""
+        async with httpx.AsyncClient() as client:
+            # Try to get existing user by contact
+            try:
+                response = await client.get(
+                    f"{self.api_base}/users/contacts/{channel}/{contact_id}",
+                    headers=self.headers
+                )
+                if response.status_code == 200:
+                    user = response.json()
+                    return user["id"], user["role"]
+            except:
+                pass
+            
+            # User doesn't exist, create new user
+            name = metadata.get("first_name", f"{channel}:{contact_id}")
+            response = await client.post(
+                f"{self.api_base}/users",
+                headers=self.headers,
+                json={
+                    "name": name,
+                    "role": "user",
+                    "meta": {"auto_created": True}
+                }
+            )
+            response.raise_for_status()
+            user = response.json()
+            user_id = user["id"]
+            
+            # Add contact to user
+            await client.post(
+                f"{self.api_base}/users/{user_id}/contacts",
+                headers=self.headers,
+                json={
+                    "channel": channel,
+                    "contact_id": contact_id,
+                    "meta": metadata
+                }
+            )
+            
+            logger.info(f"Created user {user_id} for {channel}:{contact_id}")
+            return user_id, "user"
+    
+    async def _get_or_create_thread(self, user_id: str, channel: str, contact_id: str, metadata: dict) -> str:
+        """Get or create thread for user."""
+        cache_key = f"{user_id}:{channel}:{contact_id}"
+        if cache_key in self.session_threads:
+            return self.session_threads[cache_key]
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.api_base}/threads",
                 headers=self.headers,
-                json={"meta": {"session_key": session_key, **metadata}}
+                json={
+                    "meta": {
+                        "user_id": user_id,
+                        "channel": channel,
+                        "contact_id": contact_id,
+                        **metadata
+                    }
+                }
             )
             response.raise_for_status()
             thread_id = response.json()["id"]
-            self.session_threads[session_key] = thread_id
-            logger.info(f"Created thread {thread_id} for session {session_key}")
+            self.session_threads[cache_key] = thread_id
+            logger.info(f"Created thread {thread_id} for user {user_id}")
             return thread_id
     
-    async def _create_run(self, thread_id: str, message: str) -> str:
-        """Create a run."""
+    async def _create_run(self, thread_id: str, messages: list[dict], user_id: str, user_role: str) -> str:
+        """Create a run with full message history and user context."""
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.api_base}/runs",
@@ -94,12 +180,16 @@ class BackendBridge:
                 json={
                     "thread_id": thread_id,
                     "graph_name": "conversation_router",
-                    "meta": {"messages": [{"role": "user", "content": message}]}
+                    "meta": {
+                        "messages": messages,
+                        "user_id": user_id,
+                        "user_role": user_role
+                    }
                 }
             )
             response.raise_for_status()
             run_id = response.json()["id"]
-            logger.info(f"Created run {run_id} for thread {thread_id}")
+            logger.info(f"Created run {run_id} for thread {thread_id} (user {user_id}, role {user_role})")
             return run_id
     
     async def _poll_run(self, run_id: str, max_attempts: int = 60) -> dict:
@@ -130,6 +220,51 @@ class BackendBridge:
             )
             response.raise_for_status()
             return response.json()
+    
+    async def _get_conversation_history(self, thread_id: str, limit: int = 20) -> list[dict]:
+        """Load recent conversation history from events."""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.api_base}/threads/{thread_id}/events",
+                headers=self.headers,
+                params={"limit": limit}
+            )
+            response.raise_for_status()
+            events = response.json()
+            
+            # Convert events to message format (reverse to chronological order)
+            messages = []
+            for event in reversed(events):  # API returns desc, we want asc
+                messages.append({
+                    "role": event["role"],
+                    "content": event["content"]
+                })
+            return messages
+    
+    async def _store_message_events(self, thread_id: str, user_content: str, assistant_content: str):
+        """Store user and assistant messages as events."""
+        async with httpx.AsyncClient() as client:
+            # Store user message
+            await client.post(
+                f"{self.api_base}/threads/{thread_id}/events",
+                headers=self.headers,
+                json={
+                    "id": str(uuid.uuid4()),
+                    "role": "user",
+                    "content": user_content
+                }
+            )
+            
+            # Store assistant message
+            await client.post(
+                f"{self.api_base}/threads/{thread_id}/events",
+                headers=self.headers,
+                json={
+                    "id": str(uuid.uuid4()),
+                    "role": "assistant",
+                    "content": assistant_content
+                }
+            )
     
     async def _send_response(self, original_msg: InboundMessage, content: str):
         """Send response back through bus."""

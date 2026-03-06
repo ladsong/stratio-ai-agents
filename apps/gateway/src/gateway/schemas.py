@@ -11,6 +11,11 @@ class ThreadCreate(BaseModel):
     meta: Optional[dict] = None
 
 
+class ThreadUpdate(BaseModel):
+    system_prompt: Optional[str] = None
+    meta: Optional[dict] = None
+
+
 class ThreadResponse(BaseModel):
     id: str
     meta: Optional[dict] = None
@@ -198,3 +203,83 @@ class ToolPolicyResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class LLMProviderCreate(BaseModel):
+    provider: str
+    display_name: str
+    api_key: str
+    model: str
+    api_base: Optional[str] = None
+    extra_headers: Optional[dict] = None
+    is_default: bool = False
+
+
+class LLMProviderUpdate(BaseModel):
+    display_name: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+    api_base: Optional[str] = None
+    extra_headers: Optional[dict] = None
+    is_default: Optional[bool] = None
+
+
+class LLMProviderResponse(BaseModel):
+    id: str
+    provider: str
+    display_name: str
+    model: str
+    api_base: Optional[str] = None
+    is_default: bool
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UserContactResponse(BaseModel):
+    id: str
+    channel: str
+    contact_id: str
+    meta: Optional[dict] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UserCreate(BaseModel):
+    name: str
+    role: str = "user"
+    system_prompt: Optional[str] = None
+    meta: Optional[dict] = None
+
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    role: Optional[str] = None
+    system_prompt: Optional[str] = None
+    meta: Optional[dict] = None
+
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+    role: str
+    system_prompt: Optional[str] = None
+    meta: Optional[dict] = None
+    contacts: list[UserContactResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UserContactCreate(BaseModel):
+    channel: str
+    contact_id: str
+    meta: Optional[dict] = None

@@ -5,3 +5,7 @@ langchain-core==0.3.21
 psycopg[binary]==3.2.3
 sqlalchemy==2.0.36
 pydantic==2.10.6
+
+# Nanobot agent system
+litellm>=1.0.0
+loguru>=0.7.0

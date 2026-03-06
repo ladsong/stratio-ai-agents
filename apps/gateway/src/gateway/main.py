@@ -22,6 +22,7 @@ from core.repositories.run_repo import RunRepository
 from core.repositories.thread_repo import ThreadRepository
 from core.repositories.tool_call_repo import ToolCallRepository
 from core.repositories.tool_policy_repo import ToolPolicyRepository
+from core.repositories.user_repo import UserRepository
 from gateway.dependencies import get_db, get_request_id, verify_auth
 from gateway.middleware import RequestLoggingMiddleware
 from gateway.queue import get_queue
@@ -37,15 +38,24 @@ from gateway.schemas import (
     IntegrationCreate,
     IntegrationResponse,
     IntegrationRotate,
+    LLMProviderCreate,
+    LLMProviderResponse,
+    LLMProviderUpdate,
     RunCreate,
     RunResponse,
     RunStateResponse,
     ThreadCreate,
     ThreadResponse,
+    ThreadUpdate,
     ToolCallResponse,
     ToolPolicyCreate,
     ToolPolicyResponse,
     ToolResponse,
+    UserContactCreate,
+    UserContactResponse,
+    UserCreate,
+    UserResponse,
+    UserUpdate,
 )
 
 logging.basicConfig(
@@ -116,6 +126,30 @@ def get_thread(
     thread = repo.get_by_id(thread_id)
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
+    return ThreadResponse.model_validate(thread)
+
+
+@app.patch("/api/v1/threads/{thread_id}", response_model=ThreadResponse, dependencies=[Depends(verify_auth)])
+def update_thread(
+    thread_id: str,
+    update_data: ThreadUpdate,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> ThreadResponse:
+    repo = ThreadRepository(db)
+    thread = repo.get_by_id(thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    
+    # Update meta with system_prompt
+    meta = thread.meta or {}
+    if update_data.system_prompt is not None:
+        meta["system_prompt"] = update_data.system_prompt
+    
+    if update_data.meta is not None:
+        meta = {**meta, **update_data.meta}
+    
+    thread = repo.update_meta(thread_id, meta)
     return ThreadResponse.model_validate(thread)
 
 
@@ -354,6 +388,18 @@ def list_run_tool_calls(
     repo = ToolCallRepository(db)
     tool_calls = repo.list_by_run(run_id, limit)
     return [ToolCallResponse.model_validate(tc) for tc in tool_calls]
+
+
+@app.get("/api/v1/runs/{run_id}/artifacts", response_model=list[ArtifactResponse], dependencies=[Depends(verify_auth)])
+def list_run_artifacts(
+    run_id: str,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> list[ArtifactResponse]:
+    repo = ArtifactRepository(db)
+    artifacts = repo.list_by_run(run_id, limit)
+    return [ArtifactResponse.model_validate(a) for a in artifacts]
 
 
 @app.get("/api/v1/tool-calls/{tool_call_id}", response_model=ToolCallResponse, dependencies=[Depends(verify_auth)])
@@ -681,3 +727,205 @@ async def delete_tool_policy(
         raise HTTPException(status_code=404, detail="Policy not found")
     
     return {"status": "deleted", "scope_type": scope_type, "scope_id": scope_id}
+
+
+# LLM Provider Endpoints
+
+VALID_PROVIDERS = {
+    "openai": ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4o", "gpt-4o-mini"],
+    "anthropic": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
+    "groq": ["llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+    "openrouter": [],  # OpenRouter supports any model
+    "deepseek": ["deepseek-chat", "deepseek-coder"],
+    "gemini": ["gemini-pro", "gemini-1.5-pro", "gemini-1.5-flash"],
+}
+
+
+@app.get("/api/v1/config/llm-providers/available-models")
+async def get_available_models() -> dict[str, list[str]]:
+    """Get list of available models for each provider."""
+    return VALID_PROVIDERS
+
+
+@app.get("/api/v1/config/llm-providers", response_model=list[LLMProviderResponse], dependencies=[Depends(verify_auth)])
+async def list_llm_providers(
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> list[LLMProviderResponse]:
+    """List all configured LLM providers."""
+    repo = IntegrationCredentialRepository(db)
+    providers = repo.list_by_type("llm_provider")
+    
+    result = []
+    for provider in providers:
+        meta = provider.meta or {}
+        result.append(LLMProviderResponse(
+            id=provider.id,
+            provider=meta.get("provider", "openai"),
+            display_name=provider.display_name,
+            model=meta.get("model", "gpt-4"),
+            api_base=meta.get("api_base"),
+            is_default=meta.get("is_default", False),
+            status=provider.status,
+            created_at=provider.created_at,
+            updated_at=provider.updated_at
+        ))
+    
+    return result
+
+
+@app.post("/api/v1/config/llm-providers", response_model=LLMProviderResponse, dependencies=[Depends(verify_auth)])
+async def create_llm_provider(
+    data: LLMProviderCreate,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> LLMProviderResponse:
+    """Create a new LLM provider configuration."""
+    # Validate provider
+    if data.provider not in VALID_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"Invalid provider: {data.provider}")
+    
+    # Validate model for provider
+    valid_models = VALID_PROVIDERS[data.provider]
+    if valid_models and data.model not in valid_models:
+        raise HTTPException(status_code=400, detail=f"Invalid model '{data.model}' for provider '{data.provider}'")
+    
+    # If setting as default, unset other defaults
+    repo = IntegrationCredentialRepository(db)
+    if data.is_default:
+        existing_providers = repo.list_by_type("llm_provider")
+        for provider in existing_providers:
+            if provider.meta and provider.meta.get("is_default"):
+                provider.meta["is_default"] = False
+                db.commit()
+    
+    # Create credential with metadata
+    credential_id = str(uuid.uuid4())
+    meta = {
+        "provider": data.provider,
+        "model": data.model,
+        "api_base": data.api_base,
+        "extra_headers": data.extra_headers,
+        "is_default": data.is_default
+    }
+    
+    credential = repo.create(
+        credential_id=credential_id,
+        integration_type="llm_provider",
+        display_name=data.display_name,
+        token=data.api_key,
+        meta=meta
+    )
+    
+    return LLMProviderResponse(
+        id=credential.id,
+        provider=data.provider,
+        display_name=credential.display_name,
+        model=data.model,
+        api_base=data.api_base,
+        is_default=data.is_default,
+        status=credential.status,
+        created_at=credential.created_at,
+        updated_at=credential.updated_at
+    )
+
+
+@app.patch("/api/v1/config/llm-providers/{provider_id}", response_model=LLMProviderResponse, dependencies=[Depends(verify_auth)])
+async def update_llm_provider(
+    provider_id: str,
+    data: LLMProviderUpdate,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> LLMProviderResponse:
+    """Update an LLM provider configuration."""
+    repo = IntegrationCredentialRepository(db)
+    credential = repo.get_by_id(provider_id)
+    
+    if not credential or credential.integration_type != "llm_provider":
+        raise HTTPException(status_code=404, detail="LLM provider not found")
+    
+    meta = credential.meta or {}
+    current_provider = meta.get("provider", "openai")
+    
+    # Update API key if provided
+    if data.api_key is not None:
+        updated_cred = repo.update_token(provider_id, data.api_key)
+        if not updated_cred:
+            raise HTTPException(status_code=404, detail="LLM provider not found")
+        credential = updated_cred
+    
+    # Update display name
+    if data.display_name is not None:
+        credential.display_name = data.display_name
+    
+    if data.model is not None:
+        # Validate model for provider
+        valid_models = VALID_PROVIDERS.get(current_provider, [])
+        if valid_models and data.model not in valid_models:
+            raise HTTPException(status_code=400, detail=f"Invalid model '{data.model}' for provider '{current_provider}'")
+        meta["model"] = data.model
+    
+    if data.api_base is not None:
+        meta["api_base"] = data.api_base
+    
+    if data.extra_headers is not None:
+        meta["extra_headers"] = data.extra_headers
+    
+    if data.is_default is not None:
+        if data.is_default:
+            # Unset other defaults
+            existing_providers = repo.list_by_type("llm_provider")
+            for provider in existing_providers:
+                if provider.id != provider_id and provider.meta and provider.meta.get("is_default"):
+                    provider.meta["is_default"] = False
+        meta["is_default"] = data.is_default
+    
+    credential.meta = meta
+    db.commit()
+    db.refresh(credential)
+    
+    return LLMProviderResponse(
+        id=credential.id,
+        provider=meta.get("provider", "openai"),
+        display_name=credential.display_name,
+        model=meta.get("model", "gpt-4"),
+        api_base=meta.get("api_base"),
+        is_default=meta.get("is_default", False),
+        status=credential.status,
+        created_at=credential.created_at,
+        updated_at=credential.updated_at
+    )
+
+
+@app.delete("/api/v1/config/llm-providers/{provider_id}", dependencies=[Depends(verify_auth)])
+async def delete_llm_provider(
+    provider_id: str,
+    db: Session = Depends(get_db),
+    request_id: str = Depends(get_request_id),
+) -> dict[str, str]:
+    """Delete an LLM provider configuration."""
+    repo = IntegrationCredentialRepository(db)
+    credential = repo.get_by_id(provider_id)
+    
+    if not credential or credential.integration_type != "llm_provider":
+        raise HTTPException(status_code=404, detail="LLM provider not found")
+    
+    deleted = repo.delete(provider_id)
+    
+    if not deleted:
+        raise HTTPException(status_code=404, detail="LLM provider not found")
+    
+    return {"status": "deleted", "id": provider_id}
+
+
+# Include user management endpoints
+from gateway.user_endpoints import router as user_router
+app.include_router(user_router)
+
+# Include skills endpoints
+from gateway.skills_endpoints import router as skills_router
+app.include_router(skills_router)
+
+# Include tool policy endpoints
+from gateway.tool_policy_endpoints import router as tool_policy_router
+app.include_router(tool_policy_router)

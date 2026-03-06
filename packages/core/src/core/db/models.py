@@ -10,12 +10,42 @@ from pgvector.sqlalchemy import Vector
 from core.db.base import Base, TimestampMixin
 
 
+class User(Base, TimestampMixin):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(50), nullable=False, default="user")
+    system_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    meta: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    contacts: Mapped[list["UserContact"]] = relationship("UserContact", back_populates="user")
+    threads: Mapped[list["Thread"]] = relationship("Thread", back_populates="user")
+    admin_commands: Mapped[list["AdminCommand"]] = relationship("AdminCommand", back_populates="admin_user")
+
+
+class UserContact(Base, TimestampMixin):
+    __tablename__ = "user_contacts"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    channel: Mapped[str] = mapped_column(String(50), nullable=False)
+    contact_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    meta: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    user: Mapped["User"] = relationship("User", back_populates="contacts")
+
+
 class Thread(Base, TimestampMixin):
     __tablename__ = "threads"
 
     id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    channel: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    contact_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     meta: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="threads")
     events: Mapped[list["Event"]] = relationship("Event", back_populates="thread")
     runs: Mapped[list["Run"]] = relationship("Run", back_populates="thread")
 
@@ -150,3 +180,15 @@ class ToolPolicy(Base, TimestampMixin):
     scope_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     mode: Mapped[str] = mapped_column(String(50), nullable=False, default="allowlist")
     tools: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class AdminCommand(Base, TimestampMixin):
+    __tablename__ = "admin_commands"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    admin_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    command_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    params: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    result: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    admin_user: Mapped["User"] = relationship("User", back_populates="admin_commands")

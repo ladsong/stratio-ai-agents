@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from runtime.executor import GraphExecutor
+from runtime.nanobot_executor import NanobotExecutor
 from runtime.graphs.registry import list_available_graphs
 
 
@@ -21,11 +21,11 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Nanobot Runtime API",
-    description="LangGraph workflow execution service",
+    description="LangGraph workflow execution service with nanobot agent",
     version="0.1.0",
 )
 
-executor = GraphExecutor()
+executor = NanobotExecutor()
 
 
 class ExecuteRequest(BaseModel):
@@ -54,11 +54,11 @@ def list_graphs() -> dict[str, list[str]]:
 
 
 @app.post("/execute")
-def execute_graph(request: ExecuteRequest) -> dict[str, Any]:
+async def execute_graph(request: ExecuteRequest) -> dict[str, Any]:
     try:
         logger.info(f"Executing graph {request.graph_name} for run {request.run_id}")
         
-        result = executor.execute_graph(
+        result = await executor.execute_graph(
             run_id=request.run_id,
             thread_id=request.thread_id,
             graph_name=request.graph_name,
@@ -75,11 +75,11 @@ def execute_graph(request: ExecuteRequest) -> dict[str, Any]:
 
 
 @app.post("/resume")
-def resume_graph(request: ResumeRequest) -> dict[str, Any]:
+async def resume_graph(request: ResumeRequest) -> dict[str, Any]:
     try:
         logger.info(f"Resuming graph {request.graph_name} for run {request.run_id}")
         
-        result = executor.resume_graph(
+        result = await executor.resume_graph(
             run_id=request.run_id,
             thread_id=request.thread_id,
             graph_name=request.graph_name,

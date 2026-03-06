@@ -9,10 +9,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY packages/core/ /tmp/core/
 RUN pip install --no-cache-dir -e /tmp/core
 
+COPY nanobot/ /nanobot/
+RUN pip install --no-cache-dir -e /nanobot
+
 COPY apps/runtime/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY apps/runtime/src/ ./src/
+
+RUN mkdir -p /workspace /nanobot/nanobot/skills
 
 EXPOSE 8010
 

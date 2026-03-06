@@ -8,7 +8,7 @@ from core.repositories.integration_credential_repo import IntegrationCredentialR
 
 
 def load_config_from_database():
-    """Load channel configurations from database."""
+    """Load channel and LLM provider configurations from database."""
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         logger.warning("DATABASE_URL not set, cannot load credentials from database")
@@ -61,19 +61,68 @@ def load_config_from_database():
                     }
                     logger.info(f"Loaded Slack config: {cred.display_name} (allowFrom: {allow_from})")
             
+            # Load LLM providers from database
+            llm_providers = repo.list_by_type("llm_provider")
+            providers_config = {}
+            default_provider = None
+            default_model = None
+            
+            for cred in llm_providers:
+                if cred.status != "valid":
+                    continue
+                
+                # Decrypt API key
+                api_key = repo.get_decrypted_token(cred.id)
+                if not api_key:
+                    continue
+                
+                # Extract metadata
+                meta = cred.meta or {}
+                provider_name = meta.get("provider", "openai")
+                model = meta.get("model", "gpt-4")
+                api_base = meta.get("api_base")
+                extra_headers = meta.get("extra_headers")
+                is_default = meta.get("is_default", False)
+                
+                # Build provider config
+                providers_config[provider_name] = {
+                    "api_key": api_key,
+                    "api_base": api_base,
+                    "extra_headers": extra_headers
+                }
+                
+                if is_default:
+                    default_provider = provider_name
+                    default_model = f"{provider_name}/{model}"
+                
+                logger.info(f"Loaded LLM provider: {provider_name} (model: {model}, default: {is_default})")
+            
+            # Fallback to environment variables if no providers in database
+            if not providers_config:
+                logger.info("No LLM providers in database, using environment variables")
+                providers_config = {
+                    "openai": {
+                        "api_key": os.environ.get("OPENAI_API_KEY", "")
+                    },
+                    "anthropic": {
+                        "api_key": os.environ.get("ANTHROPIC_API_KEY", "")
+                    },
+                    "groq": {
+                        "api_key": os.environ.get("GROQ_API_KEY", "")
+                    }
+                }
+                default_provider = "auto"
+                default_model = "gpt-4"
+            
             config = {
                 "channels": channels,
                 "agents": {
                     "defaults": {
-                        "provider": "openai",
-                        "model": "gpt-4"
+                        "provider": default_provider or "auto",
+                        "model": default_model or "gpt-4"
                     }
                 },
-                "providers": {
-                    "openai": {
-                        "api_key": ""
-                    }
-                }
+                "providers": providers_config
             }
             
             return config

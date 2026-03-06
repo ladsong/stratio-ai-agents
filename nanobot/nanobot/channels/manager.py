@@ -215,16 +215,22 @@ class ChannelManager:
                     timeout=1.0
                 )
 
+                logger.info("Outbound dispatcher received: {}:{} - {}...", msg.channel, msg.chat_id, msg.content[:50] if msg.content else "")
+
                 if msg.metadata.get("_progress"):
                     if msg.metadata.get("_tool_hint") and not self.config.channels.send_tool_hints:
+                        logger.debug("Skipping tool hint message")
                         continue
                     if not msg.metadata.get("_tool_hint") and not self.config.channels.send_progress:
+                        logger.debug("Skipping progress message")
                         continue
 
                 channel = self.channels.get(msg.channel)
                 if channel:
                     try:
+                        logger.info("Sending to {} channel: {}...", msg.channel, msg.content[:50] if msg.content else "")
                         await channel.send(msg)
+                        logger.info("Successfully sent to {} channel", msg.channel)
                     except Exception as e:
                         logger.error("Error sending to {}: {}", msg.channel, e)
                 else:

@@ -64,6 +64,12 @@ services:
       RUNTIME_PORT: 8010
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nanobot}:${POSTGRES_PASSWORD:-nanobot}@postgres:5432/${POSTGRES_DB:-nanobot}
       REDIS_URL: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
       - "${RUNTIME_PORT:-8010}:8010"
     depends_on:
@@ -82,6 +88,12 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nanobot}:${POSTGRES_PASSWORD:-nanobot}@postgres:5432/${POSTGRES_DB:-nanobot}
       RUNTIME_URL: http://runtime:8010
       RQ_QUEUE_NAME: nanobot-runs
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

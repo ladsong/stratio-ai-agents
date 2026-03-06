@@ -20,3 +20,12 @@ class ThreadRepository:
 
     def get_by_id(self, thread_id: str) -> Optional[Thread]:
         return self.db.query(Thread).filter(Thread.id == thread_id).first()
+
+    def update_meta(self, thread_id: str, meta: dict) -> Optional[Thread]:
+        """Update thread metadata."""
+        thread = self.get_by_id(thread_id)
+        if thread:
+            thread.meta = meta
+            self.db.commit()
+            self.db.refresh(thread)
+        return thread
