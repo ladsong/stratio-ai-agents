@@ -40,6 +40,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       AUTH_BEARER_TOKEN: ${AUTH_BEARER_TOKEN:-}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-*}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-N-u9ANiJIrNt3UgWWgu1kHNTKTPoXvK5xp4eS3GGby0=}
     ports:
       - "${GATEWAY_PORT:-8000}:8000"
     depends_on:

@@ -14,7 +14,8 @@ class EncryptionService:
                 "ENCRYPTION_KEY environment variable not set. "
                 "Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
             )
-        self.cipher = Fernet(key.encode())
+        # Key is already a string from environment, encode to bytes for Fernet
+        self.cipher = Fernet(key.encode('utf-8'))
     
     def encrypt(self, plaintext: str) -> str:
         """
